@@ -1,0 +1,27 @@
+# Create .gitignore to protect your secrets
+cat > .gitignore << 'EOF'
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Secrets
+.env
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+EOF
