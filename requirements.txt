@@ -1,0 +1,10 @@
+requests==2.31.0
+python-dotenv==1.0.0
+streamlit==1.31.0
+
+# Optional: For Epic/Cerner integration
+pyjwt[crypto]==2.8.0
+cryptography==41.0.7
+
+# Optional: For V2 LLM enhancement
+openai==1.54.0
