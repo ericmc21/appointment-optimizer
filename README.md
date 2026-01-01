@@ -37,6 +37,8 @@ This system demonstrates intelligent healthcare appointment optimization by comb
 - **Cost transparency** showing estimated costs for different care options
 - **Alternative recommendations** including ER, urgent care, and telemedicine
 
+**Proof of Concept:** Demonstrates technical feasibility of appointment optimization approach that could address documented healthcare inefficiencies.
+
 **Built by:** Eric McLean, Senior Delivery Manager with 5+ years of Infermedica implementation experience
 
 ---
@@ -45,11 +47,11 @@ This system demonstrates intelligent healthcare appointment optimization by comb
 
 Healthcare organizations face significant inefficiencies in appointment scheduling:
 
-- **$150B lost annually** from appointment no-shows in the US
-- **20-30% no-show rate** often due to inappropriate bookings
-- **Patients booking wrong specialists** (e.g., GP when they need cardiology)
-- **Urgent cases waiting weeks** while routine slots fill emergency availability
-- **Poor slot utilization** - emergency slots wasted on non-urgent cases
+- **[$150B lost annually](https://www.hcinnovationgroup.com/clinical-it/article/13008175/missed-appointments-cost-the-us-healthcare-system-150b-each-year)** from appointment no-shows in the US ([Healthcare Innovation, 2024](https://www.hcinnovationgroup.com/clinical-it/article/13008175/missed-appointments-cost-the-us-healthcare-system-150b-each-year))
+- **[20-30% no-show rate](https://curogram.com/blog/average-patient-no-show-rate)** often due to inappropriate bookings ([Curogram, 2025](https://curogram.com/blog/average-patient-no-show-rate))
+- **[19.7M inappropriate specialist referrals](https://www.healthcaredive.com/news/survey-almost-20m-referrals-per-year-go-to-the-wrong-specialist/331410/)** annually, costing $2B ([Kyruus, 2014](https://www.healthcaredive.com/news/survey-almost-20m-referrals-per-year-go-to-the-wrong-specialist/331410/))
+- **[Urgent cases waiting 76+ days](https://www.hcinnovationgroup.com/clinical-it/article/13008175/missed-appointments-cost-the-us-healthcare-system-150b-each-year)** for complex diagnostics ([Healthcare Innovation, 2024](https://www.hcinnovationgroup.com/clinical-it/article/13008175/missed-appointments-cost-the-us-healthcare-system-150b-each-year))
+- **[20-30% of ER visits are non-urgent](https://doctorsa.com/stories/er-waiting-times/)**, wasting emergency resources ([DoctorsA, 2025](https://doctorsa.com/stories/er-waiting-times/))
 
 **Result:** Frustrated patients, inefficient resource use, and lost revenue.
 
