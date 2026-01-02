@@ -45,6 +45,26 @@ class TriageResult:
     root_cause: str
 
 
+@dataclass
+class DiagnosisQuestion:
+    """Question from diagnosis endpoint"""
+
+    question_type: str  # single, group_single, group_multiple
+    question_text: str
+    items: List[Dict]  # List of symptoms/conditions to ask about
+    question_id: Optional[str] = None
+
+
+@dataclass
+class DiagnosisResult:
+    """Result from diagnosis endpoint"""
+
+    question: Optional[DiagnosisQuestion]
+    should_stop: bool
+    conditions: List[Dict]
+    extras: Dict
+
+
 class InfermedicaClient:
     """
     Client for Infermedica Platform/Engine API
@@ -250,6 +270,211 @@ class InfermedicaClient:
         return specialist_map.get(
             specialist_id, {"name": "Specialist", "category": "General"}
         )
+
+    def suggest_risk_factors(
+        self, age: int, sex: str, interview_id: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get common demographic risk factors to ask about
+
+        Args:
+            age: Patient age
+            sex: "male" or "female"
+            interview_id: Optional interview tracking ID
+
+        Returns:
+            List of risk factors to confirm
+        """
+        url = f"{self.base_url}/suggest"
+
+        payload = {
+            "sex": sex,
+            "age": {"value": age},
+            "suggest_method": "demographic_risk_factors",
+        }
+
+        if interview_id:
+            payload["interview_id"] = interview_id
+
+        try:
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            # Return the suggestions
+            if isinstance(data, list):
+                return data
+            else:
+                return data.get("key", [])
+        except requests.exceptions.RequestException as e:
+            print(f"x Risk factors request failed: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response: {e.response.text}")
+            return []
+
+    def suggest_related_symptoms(
+        self,
+        evidence: List[Dict],
+        age: int,
+        sex: str,
+        interview_id: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Get related symptoms to ask about based on current evidence
+
+        Args:
+            evidence: List of symptoms already collected
+            age: Patient age
+            sex: "male" or "female"
+            interview_id: Optional interview tracking ID
+
+        Returns:
+            List of related symptoms to ask about
+        """
+        url = f"{self.base_url}/suggest"
+
+        payload = {
+            "sex": sex,
+            "age": {"value": age},
+            "evidence": evidence,
+            "suggest_method": "symptoms",
+        }
+
+        if interview_id:
+            payload["interview_id"] = interview_id
+
+        try:
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            # Return the suggestions
+            if isinstance(data, list):
+                return data
+            else:
+                return data.get("key", [])
+
+        except requests.exceptions.RequestException as e:
+            print(f"✗ Related symptoms suggestion failed: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response: {e.response.text}")
+            return []
+
+    def suggest_red_flags(
+        self,
+        evidence: List[Dict],
+        age: int,
+        sex: str,
+        interview_id: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Check for red flag symptoms (safety critical)
+
+        Args:
+            evidence: List of symptoms already collected
+            age: Patient age
+            sex: "male" or "female"
+            interview_id: Optional interview tracking ID
+
+        Returns:
+            List of red flag symptoms to check
+        """
+        url = f"{self.base_url}/suggest"
+
+        payload = {
+            "sex": sex,
+            "age": {"value": age},
+            "evidence": evidence,
+            "suggest_method": "red_flags",
+        }
+
+        if interview_id:
+            payload["interview_id"] = interview_id
+
+        try:
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            # Return the suggestions
+            if isinstance(data, list):
+                return data
+            else:
+                return data.get("key", [])
+
+        except requests.exceptions.RequestException as e:
+            print(f"✗ Red flags check failed: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response: {e.response.text}")
+            return []
+
+    def diagnosis(
+        self,
+        evidence: List[Dict],
+        age: int,
+        sex: str,
+        interview_id: Optional[str] = None,
+        extras: Optional[Dict] = None,
+    ) -> DiagnosisResult:
+        """
+        Get next question in the diagnostic interview
+
+        This is the core of the iterative interview loop. Call repeatedly until should_stop=True.
+
+        Args:
+            evidence: List of symptoms/conditions with responses
+            age: Patient age
+            sex: "male" or "female"
+            interview_id: Optional interview tracking ID (recommended)
+            extras: Optional additional context
+        """
+        url = f"{self.base_url}/diagnosis"
+
+        payload = {"sex": sex, "age": {"value": age}, "evidence": evidence}
+
+        if interview_id:
+            payload["interview_Id"] = interview_id
+
+        if extras:
+            payload["extras"] = extras
+
+        try:
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            # Parse the response
+            should_stop = data.get("should_stop", False)
+            conditions = data.get("conditions", [])
+            extras_response = data.get("extras", {})
+
+            # Parse question if present
+            question = None
+            if not should_stop and "question" in data:
+                q = data["question"]
+                question = DiagnosisQuestion(
+                    question_type=q.get("type"),
+                    question_text=q.get("text"),
+                    items=q.get("items", []),
+                    question_id=q.get("id"),
+                )
+
+            return DiagnosisResult(
+                question=question,
+                should_stop=should_stop,
+                conditions=conditions,
+                extras=extras_response,
+            )
+
+        except requests.exceptions.RequestException as e:
+            print(f"✗ Diagnosis call failed: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response: {e.response.text}")
+
+            # Return safe default - stop interview
+            return DiagnosisResult(
+                question=None, should_stop=True, conditions=[], extras={}
+            )
 
 
 def test_infermedica():
