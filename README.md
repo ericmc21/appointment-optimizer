@@ -372,10 +372,10 @@ total_score = (urgency_match * 0.5) +   # Clinical safety first
 **Eric McLean**  
 Senior Delivery Manager | Healthcare AI Solutions
 
-📧 Email: [your.email@example.com]  
+📧 Email: [ericmc21@gmail.com]  
 🔗 Portfolio: [https://eric-mclean.com](https://eric-mclean.com)  
-💼 LinkedIn: [Your LinkedIn]  
-🐙 GitHub: [Your GitHub]
+💼 LinkedIn: [https://www.linkedin.com/in/ejmclean/]  
+🐙 GitHub: [https://github.com/ericmc21]
 
 ---
 
