@@ -164,7 +164,7 @@ class InterviewManager:
         rf_name = "Risk factor"
         for rf in self.pending_risk_factors:
             if rf.get("id") == risk_factor_id:
-                rf_name = rf.get("name", "Risk factor")
+                rf_name = rf.get("common_name", "Risk factor")
                 break
 
         # Add to history
@@ -221,7 +221,7 @@ class InterviewManager:
         sym_name = "Symptom"
         for sym in self.pending_related_symptoms:
             if sym.get("id") == symptom_id:
-                sym_name = sym.get("name", "Symptom")
+                sym_name = sym.get("common_name", "Symptom")
                 break
 
         # Add to history
@@ -278,7 +278,7 @@ class InterviewManager:
         rf_name = "Red flag symptom"
         for rf in self.pending_red_flags:
             if rf.get("id") == red_flag_id:
-                rf_name = rf.get("name", "Red flag symptom")
+                rf_name = rf.get("common_name", "Red flag symptom")
                 break
 
         # Add to history
@@ -343,15 +343,13 @@ class InterviewManager:
             return
 
         # Add to evidence
-        self.state.evidence.append(
-            {"id": item_id, "choice_id": response, "source": "predefined"}  # what?
-        )
+        self.state.evidence.append({"id": item_id, "choice_id": response})  # what?
 
         # Find item name from current question
         item_name = "Symptom"
         for item in self.state.current_question.items:
             if item.get("id") == item_id:
-                item_name = item.get("name", "Symptom")
+                item_name = item.get("common_name", "Symptom")
                 break
 
         # Add to history
