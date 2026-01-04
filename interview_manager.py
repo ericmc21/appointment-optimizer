@@ -313,6 +313,7 @@ class InterviewManager:
             age=self.state.patient_age,
             sex=self.state.patient_sex,
             interview_id=self.state.interview_id,
+            extras={"interview_mode": "short_triage"},
         )
 
         # Store current conditions

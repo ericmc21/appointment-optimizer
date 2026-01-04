@@ -254,7 +254,7 @@ def render_stage_1_initial_symptoms():
 def render_stage_2_risk_factors():
     """Stage 2: Collect risk factors"""
     st.markdown(
-        '<div class="stage-header">Step 2: Health Background</div>',
+        '<div class="stage-header">Step 2: Demographic Risk Factors</div>',
         unsafe_allow_html=True,
     )
 
@@ -275,8 +275,12 @@ def render_stage_2_risk_factors():
             st.rerun()
         return
 
-    st.write(
-        f"**Please answer these {len(risk_factors)} questions about your health background:**"
+    st.markdown(
+        """
+**How does each of these statements relate to you?**  
+<small>Select one answer for each statement</small>
+""",
+        unsafe_allow_html=True,
     )
 
     # Create form for all risk factors
@@ -286,7 +290,7 @@ def render_stage_2_risk_factors():
         for i, rf in enumerate(risk_factors):
             st.markdown(f'<div class="question-card">', unsafe_allow_html=True)
             response = st.radio(
-                f"**{i+1}. Do you have {rf.get('name')}?**",
+                f"**{i+1}. {rf.get('common_name')}**",
                 ["Yes", "No", "Unknown"],
                 index=1,  # Default to "No"
                 key=f"rf_{rf.get('id')}",
@@ -333,8 +337,12 @@ def render_stage_3_related_symptoms():
             st.rerun()
         return
 
-    st.write(
-        f"**Based on your symptoms, please answer these {len(related)} related questions:**"
+    st.markdown(
+        """
+**How does each of these statements relate to you?**  
+<small>Select one answer for each statement</small>
+""",
+        unsafe_allow_html=True,
     )
 
     # Create form for all related symptoms
@@ -344,7 +352,7 @@ def render_stage_3_related_symptoms():
         for i, sym in enumerate(related):
             st.markdown(f'<div class="question-card">', unsafe_allow_html=True)
             response = st.radio(
-                f"**{i+1}. Do you have {sym.get('common_name')}?**",
+                f"**{i+1}. {sym.get('common_name')}**",
                 ["Yes", "No", "Unknown"],
                 index=1,  # Default to "No"
                 key=f"rs_{sym.get('id')}",
@@ -402,7 +410,7 @@ def render_stage_4_red_flags():
         for i, rf in enumerate(red_flags):
             st.markdown(f'<div class="question-card">', unsafe_allow_html=True)
             response = st.radio(
-                f"**⚠️ {i+1}. {rf.get('common_name')}?**",
+                f"**⚠️ {i+1}. {rf.get('common_name')}**",
                 ["Yes", "No", "Unknown"],
                 index=1,  # Default to "No"
                 key=f"redf_{rf.get('id')}",
@@ -473,7 +481,7 @@ def render_stage_5_interview_loop():
         # Single yes/no question
         item = question.items[0] if question.items else {}
         response = st.radio(
-            f"{item.get('common_name', 'Symptom')}",
+            f"{item.get('name', 'Symptom')}",
             ["Yes", "No", "Unknown"],
             key=f"q_{item.get('id')}",
             horizontal=True,
@@ -489,7 +497,7 @@ def render_stage_5_interview_loop():
         # Group question - show first item for now (can be enhanced)
         item = question.items[0] if question.items else {}
         response = st.radio(
-            f"{item.get('common_name', 'Symptom')}",
+            f"{item.get('name', 'Symptom')}",
             ["Yes", "No", "Unknown"],
             key=f"q_{item.get('id')}",
             horizontal=True,
