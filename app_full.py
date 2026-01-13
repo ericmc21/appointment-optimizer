@@ -492,7 +492,57 @@ def render_stage_5_interview_loop():
             manager.answer_question(item.get("id"), choice_map[response])
             st.session_state.current_question = None
             st.rerun()
+    elif question.question_type == "group_single":
+        # Multiple choice - select one option
+        # Create radio buttons for each item
+        options = [item.get("name") for item in question.items]
+        option_ids = [item.get("id") for item in question.items]
 
+        selected = st.radio(
+            "Select one answer",
+            options,
+            key=f"q_group_{question.items[0].get('id') if question.items else 'none'}",
+            index=None,  # No default selection
+        )
+
+        if st.button("Next Question →", type="primary", disabled=(selected is None)):
+            # Find the selected item's ID
+            selected_index = options.index(selected)
+            selected_id = option_ids[selected_index]
+
+            # Mark selected as present, all others as absent
+            for item in question.items:
+                if item.get("id") == selected_id:
+                    manager.answer_question(item.get("id"), "present")
+                else:
+                    manager.answer_question(item.get("id"), "absent")
+
+            st.session_state.current_question = None
+            st.rerun()
+    elif question.question_type == "group_multiple":
+        # Multiple selection - select one or more options
+        st.markdown("**Select all that apply:**")
+
+        selected_ids = []
+
+        for item in question.items:
+            is_checked = st.checkbox(item.get("name"), key=f"q_multi_{item.get('id')}")
+            if is_checked:
+                selected_ids.append(item.get("id"))
+
+        # Require at least one selection
+        if st.button(
+            "Next Question →", type="primary", disabled=(len(selected_ids) == 0)
+        ):
+            # Mark selected items as present, others as absent
+            for item in question.items:
+                if item.get("id") in selected_ids:
+                    manager.answer_question(item.get("id"), "present")
+                else:
+                    manager.answer_question(item.get("id"), "absent")
+
+            st.session_state.current_question = None
+            st.rerun()
     else:
         # Group question - show first item for now (can be enhanced)
         item = question.items[0] if question.items else {}
