@@ -633,11 +633,25 @@ def render_appointment_results(results):
 
 def render_stage_6_results():
     """Stage 6: Show final results and appointments"""
-    st.markdown('<div class="complete-box">', unsafe_allow_html=True)
-    st.markdown("## ✅ Interview Complete!")
-    st.markdown("</div>", unsafe_allow_html=True)
 
     results = st.session_state.final_results
+
+    # Get triage results immediately to display in header
+    if "triage_data" not in st.session_state:
+        manager = st.session_state.manager
+        triage_data = manager.get_triage_results()
+        if triage_data:
+            st.session_state.triage_data = triage_data
+
+    # Show completion header with triage level
+    st.markdown('<div class="complete-box">', unsafe_allow_html=True)
+    if "triage_data" in st.session_state:
+        triage = st.session_state.triage_data["triage"]
+        urgency = triage.triage_level.value.replace("_", " ").upper()
+        st.markdown(f"## ✅ Interview Complete! | 🚨 Urgency: {urgency}")
+    else:
+        st.markdown("## ✅ Interview Complete!")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # Show top conditions
     st.markdown(
@@ -670,79 +684,73 @@ def render_stage_6_results():
         ):
             with st.spinner("Finding optimal appointments..."):
                 try:
-                    manager = st.session_state.manager
+                    # Use the already-fetched triage data
+                    if "triage_data" not in st.session_state:
+                        st.error("Triage data not available")
+                        return
 
-                    # Get triage and specialist results (two separate endpoints)
-                    results_dict = manager.get_triage_results()
+                    triage = st.session_state.triage_data[
+                        "triage"
+                    ]  # TriageResult object
+                    specialist = st.session_state.triage_data[
+                        "specialist"
+                    ]  # SpecialistRecommendation object
 
-                    if results_dict:
-                        triage = results_dict["triage"]  # TriageResult object
-                        specialist = results_dict[
-                            "specialist"
-                        ]  # SpecialistRecommendation object
+                    # Get top condition for display
+                    top_condition = None
+                    if results.get("conditions"):
+                        top_condition = results["conditions"][0].get("common_name")
 
-                        # Get top condition for display
-                        top_condition = None
-                        if results.get("conditions"):
-                            top_condition = results["conditions"][0].get("common_name")
+                    # Generate appointment recommendations
+                    from appointment_simulator import (
+                        AppointmentSimulator,
+                        SpecialtyType,
+                    )
+                    from appointment_matcher import AppointmentMatcher
 
-                        # Generate appointment recommendations
-                        from appointment_simulator import (
-                            AppointmentSimulator,
-                            SpecialtyType,
-                        )
-                        from appointment_matcher import AppointmentMatcher
+                    simulator = AppointmentSimulator()
+                    matcher = AppointmentMatcher()
 
-                        simulator = AppointmentSimulator()
-                        matcher = AppointmentMatcher()
+                    # Map specialist name to SpecialtyType enum
+                    specialty_map = {
+                        "general practitioner": SpecialtyType.PRIMARY_CARE,
+                        "primary care": SpecialtyType.PRIMARY_CARE,
+                        "cardiologist": SpecialtyType.CARDIOLOGY,
+                        "dermatologist": SpecialtyType.DERMATOLOGY,
+                        "orthopedist": SpecialtyType.ORTHOPEDICS,
+                        "neurologist": SpecialtyType.NEUROLOGY,
+                        "psychiatrist": SpecialtyType.PSYCHIATRY,
+                        "pediatrician": SpecialtyType.PEDIATRICS,
+                    }
 
-                        # Map specialist name to SpecialtyType enum
-                        specialty_map = {
-                            "general practitioner": SpecialtyType.PRIMARY_CARE,
-                            "primary care": SpecialtyType.PRIMARY_CARE,
-                            "cardiologist": SpecialtyType.CARDIOLOGY,
-                            "dermatologist": SpecialtyType.DERMATOLOGY,
-                            "orthopedist": SpecialtyType.ORTHOPEDICS,
-                            "neurologist": SpecialtyType.NEUROLOGY,
-                            "psychiatrist": SpecialtyType.PSYCHIATRY,
-                            "pediatrician": SpecialtyType.PEDIATRICS,
-                        }
+                    specialist_lower = specialist.specialist_name.lower()
+                    specialty_type = specialty_map.get(
+                        specialist_lower, SpecialtyType.PRIMARY_CARE
+                    )
 
-                        specialist_lower = specialist.specialist_name.lower()
-                        specialty_type = specialty_map.get(
-                            specialist_lower, SpecialtyType.PRIMARY_CARE
-                        )
+                    # Generate slots for recommended specialist
+                    slots = simulator.generate_slots(
+                        specialty=specialty_type, days_ahead=14
+                    )
 
-                        # Generate slots for recommended specialist
-                        slots = simulator.generate_slots(
-                            specialty=specialty_type, days_ahead=14
-                        )
+                    # Score appointments (matcher now takes separate params)
+                    scored = matcher.match_appointments(
+                        triage_level=triage.triage_level.value,
+                        specialist_name=specialist.specialist_name,
+                        available_slots=slots,
+                        max_results=5,
+                    )
 
-                        # Score appointments (matcher now takes separate params)
-                        scored = matcher.match_appointments(
-                            triage_level=triage.triage_level.value,
-                            specialist_name=specialist.specialist_name,
-                            available_slots=slots,
-                            max_results=5,
-                        )
+                    # Store results
+                    st.session_state.appointment_results = {
+                        "triage": triage,
+                        "specialist": specialist,
+                        "top_condition": top_condition,
+                        "appointments": scored,
+                    }
 
-                        # Store results
-                        st.session_state.appointment_results = {
-                            "triage": triage,
-                            "specialist": specialist,
-                            "top_condition": top_condition,
-                            "appointments": scored,
-                        }
+                    st.rerun()
 
-                        st.rerun()
-                    else:
-                        st.error("Could not get triage results")
-
-                except Exception as e:
-                    st.error(f"Error finding appointments: {e}")
-                    import traceback
-
-                    st.code(traceback.format_exc())
                 except Exception as e:
                     st.error(f"Error finding appointments: {e}")
                     import traceback
