@@ -1,6 +1,6 @@
 """
 Interview Manager
-Managers multi-turn diagnostic interview with Infermedica
+Manages the multi-turn diagnostic interview process with Infermedica
 """
 
 import uuid
@@ -60,7 +60,8 @@ class InterviewState:
 
 class InterviewManager:
     """
-    Manages the com
+    Manages the complete diagnostic interview process
+    Handles state, evidence collection, and interview flow
     """
 
     def __init__(
@@ -75,7 +76,7 @@ class InterviewManager:
 
         Args:
             client: InfermedicaClient instance
-            age: patient age
+            age: Patient age
             sex: "male" or "female"
             interview_id: Optional custom interview ID
         """
@@ -86,15 +87,14 @@ class InterviewManager:
             patient_sex=sex,
         )
 
-        # Pending items to ask about (populated by sugget methods)
+        # Pending items to ask about (populated by suggest methods)
         self.pending_risk_factors = []
         self.pending_related_symptoms = []
         self.pending_red_flags = []
 
     def _generate_interview_id(self) -> str:
         """Generate unique interview ID"""
-        interview_id = uuid.uuid4()
-        return interview_id.hex
+        return f"interview_{uuid.uuid4().hex[:12]}"
 
     def start_interview(self, initial_symptoms: List[ParsedSymptom]):
         """
@@ -115,7 +115,7 @@ class InterviewManager:
             self.state.history.append(
                 InterviewHistory(
                     stage=InterviewStage.INITIAL_SYMPTOMS,
-                    question_text="Initial symptoms",
+                    question_text="Initial symptom",
                     question_type="initial",
                     item_id=symptom.id,
                     item_name=symptom.name,
@@ -164,7 +164,7 @@ class InterviewManager:
         rf_name = "Risk factor"
         for rf in self.pending_risk_factors:
             if rf.get("id") == risk_factor_id:
-                rf_name = rf.get("common_name", "Risk factor")
+                rf_name = rf.get("name", "Risk factor")
                 break
 
         # Add to history
@@ -221,7 +221,7 @@ class InterviewManager:
         sym_name = "Symptom"
         for sym in self.pending_related_symptoms:
             if sym.get("id") == symptom_id:
-                sym_name = sym.get("common_name", "Symptom")
+                sym_name = sym.get("name", "Symptom")
                 break
 
         # Add to history
@@ -278,7 +278,7 @@ class InterviewManager:
         rf_name = "Red flag symptom"
         for rf in self.pending_red_flags:
             if rf.get("id") == red_flag_id:
-                rf_name = rf.get("common_name", "Red flag symptom")
+                rf_name = rf.get("name", "Red flag symptom")
                 break
 
         # Add to history
@@ -301,19 +301,20 @@ class InterviewManager:
         Returns:
             DiagnosisQuestion or None if interview complete
         """
-        # Can only be called after red flags stage (not really)
+        # Can only be called after red flags stage
         if self.state.stage == InterviewStage.RED_FLAGS:
             self.state.stage = InterviewStage.INTERVIEW_LOOP
 
         if self.state.stage != InterviewStage.INTERVIEW_LOOP:
             return None
+
         # Call /diagnosis endpoint
         result = self.client.diagnosis(
             evidence=self.state.evidence,
             age=self.state.patient_age,
             sex=self.state.patient_sex,
             interview_id=self.state.interview_id,
-            extras={"interview_mode": "short_triage"},
+            extras={"interview_mode": "triage"},
         )
 
         # Store current conditions
@@ -344,13 +345,15 @@ class InterviewManager:
             return
 
         # Add to evidence
-        self.state.evidence.append({"id": item_id, "choice_id": response})  # what?
+        self.state.evidence.append(
+            {"id": item_id, "choice_id": response, "source": "predefined"}
+        )
 
         # Find item name from current question
         item_name = "Symptom"
         for item in self.state.current_question.items:
             if item.get("id") == item_id:
-                item_name = item.get("common_name", "Symptom")
+                item_name = item.get("name", "Symptom")
                 break
 
         # Add to history
@@ -414,6 +417,61 @@ class InterviewManager:
                 for h in self.state.history
             ],
         }
+
+    def get_triage_results(self):
+        """
+        Get triage results and specialist recommendation after interview completion
+
+        Calls two separate endpoints:
+        1. /triage - for urgency level and channel
+        2. /recommend_specialist - for specialist recommendation
+
+        Returns:
+            TriageResult with combined information
+        """
+        if not self.state.is_complete:
+            return None
+
+        try:
+            # Convert evidence to ParsedSymptom format for triage
+            from infermedica_client import ParsedSymptom, TriageResult
+
+            symptoms = []
+            for ev in self.state.evidence:
+                if ev.get("choice_id") == "present":
+                    # Create a ParsedSymptom-like object
+                    symptoms.append(
+                        ParsedSymptom(
+                            id=ev.get("id"),
+                            name=ev.get("id"),  # We don't have the name stored
+                            common_name=ev.get("id"),
+                            choice_id="present",
+                        )
+                    )
+
+            # Call /triage endpoint
+            triage = self.client.run_triage(
+                symptoms=symptoms,
+                age=self.state.patient_age,
+                sex=self.state.patient_sex,
+            )
+
+            # Call /recommend_specialist endpoint (also needs symptoms)
+            specialist = self.client.recommend_specialist(
+                symptoms=symptoms,
+                age=self.state.patient_age,
+                sex=self.state.patient_sex,
+            )
+
+            # Return dict with both results
+            return {"triage": triage, "specialist": specialist}
+
+        except Exception as e:
+            print(f"✗ Failed to get triage results: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return None
 
     def get_state_summary(self) -> str:
         """Get human-readable summary of interview state"""

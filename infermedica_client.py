@@ -1,6 +1,6 @@
 """
 Infermedica API Client
-Handles authentication, symptom parsing, and triage
+Handles authentication, symptom parsing, triage, and specialist recommendation
 """
 
 import os
@@ -35,16 +35,17 @@ class ParsedSymptom:
 
 @dataclass
 class TriageResult:
-    """Result from triage endpoint"""
+    """Result from /triage endpoint - urgency only"""
 
     triage_level: TriageLevel
+    recommended_channel: str
     serious_observations: List[Dict]
     root_cause: str
 
 
 @dataclass
 class SpecialistRecommendation:
-    """Result from /recommend_specialist endpont"""
+    """Result from /recommend_specialist endpoint"""
 
     specialist_id: str
     specialist_name: str
@@ -53,7 +54,7 @@ class SpecialistRecommendation:
 
 @dataclass
 class DiagnosisQuestion:
-    """Question from diagnosis endpoint"""
+    """Question from diagnosis endpoint (for full interview flow)"""
 
     question_type: str  # single, group_single, group_multiple
     question_text: str
@@ -63,7 +64,7 @@ class DiagnosisQuestion:
 
 @dataclass
 class DiagnosisResult:
-    """Result from diagnosis endpoint"""
+    """Result from diagnosis endpoint (for full interview flow)"""
 
     question: Optional[DiagnosisQuestion]
     should_stop: bool
@@ -74,7 +75,6 @@ class DiagnosisResult:
 class InfermedicaClient:
     """
     Client for Infermedica Platform/Engine API
-    Handles symptom parsing and triage
     """
 
     def __init__(self):
@@ -98,25 +98,7 @@ class InfermedicaClient:
     def parse_symptoms(
         self, text: str, age: int, sex: str, include_tokens: bool = False
     ) -> List[ParsedSymptom]:
-        """
-        Parse free text into structured symptoms using Infermedica NLP
-
-        Args:
-            text: Patient's symptom description (e.g., "I have a cold and fever")
-            age: Patient age
-            sex: "male" or "female"
-            include_tokens: Whether to include token-level analysis
-
-        Returns:
-            List of parsed symptoms with IDs
-
-        Example:
-            >>> parse_symptoms("I have a cold and fever", 30, "male")
-            [
-                ParsedSymptom(id="s_99", name="Fever", common_name="Fever"),
-                ParsedSymptom(id="s_1962", name="Nasal congestion", ...)
-            ]
-        """
+        """Parse free text into structured symptoms"""
         url = f"{self.base_url}/parse"
 
         payload = {
@@ -131,7 +113,6 @@ class InfermedicaClient:
             response.raise_for_status()
             data = response.json()
 
-            # Extract mentions (symptoms found in text)
             symptoms = []
             for mention in data.get("mentions", []):
                 symptom = ParsedSymptom(
@@ -145,86 +126,22 @@ class InfermedicaClient:
             return symptoms
 
         except requests.exceptions.RequestException as e:
-            print(f"✗ Infermedica parse failed: {e}")
-            if hasattr(e, "response") and e.response is not None:
-                print(f"Response: {e.response.text}")
-            raise
-
-    def suggest_symptoms(
-        self, text: str, age: int, sex: str, max_results: int = 8
-    ) -> List[ParsedSymptom]:
-        """
-        Suggest symptoms based on partial text (autocomplete-style)
-
-        Args:
-            text: Partial symptom text (e.g., "head")
-            age: Patient age
-            sex: "male" or "female"
-            max_results: Maximum suggestions to return
-
-        Returns:
-            List of suggested symptoms
-        """
-        url = f"{self.base_url}/suggest"
-
-        payload = {
-            "text": text,
-            "age": {"value": age},
-            "sex": sex,
-            "max_results": max_results,
-        }
-
-        try:
-            response = requests.post(url, headers=self.headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-
-            suggestions = []
-            for item in data:
-                symptom = ParsedSymptom(
-                    id=item["id"],
-                    name=item["name"],
-                    common_name=item.get("common_name", item["name"]),
-                )
-                suggestions.append(symptom)
-
-            return suggestions
-
-        except requests.exceptions.RequestException as e:
-            print(f"✗ Infermedica suggest failed: {e}")
+            print(f"✗ Parse failed: {e}")
             raise
 
     def run_triage(
-        self,
-        symptoms: List[ParsedSymptom],
-        age: int,
-        sex: str,
-        risk_factors: Optional[List[Dict]] = None,
+        self, symptoms: List[ParsedSymptom], age: int, sex: str
     ) -> TriageResult:
         """
-        Run triage assessment based on symptoms
-
-        Args:
-            symptoms: List of symptoms (from parse or user selection)
-            age: Patient age
-            sex: "male" or "female"
-            risk_factors: Optional risk factors (e.g., pregnancy, smoking)
-
-        Returns:
-            TriageResult with urgency level and recommendations
+        Get urgency level from /triage endpoint
+        Does NOT return specialist - use recommend_specialist() for that
         """
         url = f"{self.base_url}/triage"
 
-        # Build evidence list
-        evidence = []
-        for symptom in symptoms:
-            evidence.append(
-                {"id": symptom.id, "choice_id": symptom.choice_id, "source": "initial"}
-            )
-
-        # Add risk factors if provided
-        if risk_factors:
-            evidence.extend(risk_factors)
+        evidence = [
+            {"id": s.id, "choice_id": s.choice_id, "source": "initial"}
+            for s in symptoms
+        ]
 
         payload = {"sex": sex, "age": {"value": age}, "evidence": evidence}
 
@@ -235,14 +152,13 @@ class InfermedicaClient:
 
             return TriageResult(
                 triage_level=TriageLevel(data["triage_level"]),
+                recommended_channel=data.get("recommended_channel", "personal_visit"),
                 serious_observations=data.get("serious", []),
                 root_cause=data.get("root_cause", ""),
             )
 
         except requests.exceptions.RequestException as e:
-            print(f"✗ Infermedica triage failed: {e}")
-            if hasattr(e, "response") and e.response is not None:
-                print(f"Response: {e.response.text}")
+            print(f"✗ Triage failed: {e}")
             raise
 
     def recommend_specialist(
@@ -283,17 +199,7 @@ class InfermedicaClient:
     def suggest_risk_factors(
         self, age: int, sex: str, interview_id: Optional[str] = None
     ) -> List[Dict]:
-        """
-        Get common demographic risk factors to ask about
-
-        Args:
-            age: Patient age
-            sex: "male" or "female"
-            interview_id: Optional interview tracking ID
-
-        Returns:
-            List of risk factors to confirm
-        """
+        """Get demographic risk factors"""
         url = f"{self.base_url}/suggest"
 
         payload = {
@@ -310,15 +216,12 @@ class InfermedicaClient:
             response.raise_for_status()
             data = response.json()
 
-            # Return the suggestions
             if isinstance(data, list):
                 return data
             else:
-                return data.get("key", [])
+                return data.get("suggestions", [])
         except requests.exceptions.RequestException as e:
-            print(f"x Risk factors request failed: {e}")
-            if hasattr(e, "response") and e.response is not None:
-                print(f"Response: {e.response.text}")
+            print(f"✗ Risk factors failed: {e}")
             return []
 
     def suggest_related_symptoms(
@@ -328,18 +231,7 @@ class InfermedicaClient:
         sex: str,
         interview_id: Optional[str] = None,
     ) -> List[Dict]:
-        """
-        Get related symptoms to ask about based on current evidence
-
-        Args:
-            evidence: List of symptoms already collected
-            age: Patient age
-            sex: "male" or "female"
-            interview_id: Optional interview tracking ID
-
-        Returns:
-            List of related symptoms to ask about
-        """
+        """Get related symptoms to ask about"""
         url = f"{self.base_url}/suggest"
 
         payload = {
@@ -357,16 +249,12 @@ class InfermedicaClient:
             response.raise_for_status()
             data = response.json()
 
-            # Return the suggestions
             if isinstance(data, list):
                 return data
             else:
-                return data.get("key", [])
-
+                return data.get("suggestions", [])
         except requests.exceptions.RequestException as e:
-            print(f"✗ Related symptoms suggestion failed: {e}")
-            if hasattr(e, "response") and e.response is not None:
-                print(f"Response: {e.response.text}")
+            print(f"✗ Related symptoms failed: {e}")
             return []
 
     def suggest_red_flags(
@@ -376,18 +264,7 @@ class InfermedicaClient:
         sex: str,
         interview_id: Optional[str] = None,
     ) -> List[Dict]:
-        """
-        Check for red flag symptoms (safety critical)
-
-        Args:
-            evidence: List of symptoms already collected
-            age: Patient age
-            sex: "male" or "female"
-            interview_id: Optional interview tracking ID
-
-        Returns:
-            List of red flag symptoms to check
-        """
+        """Check for red flag symptoms"""
         url = f"{self.base_url}/suggest"
 
         payload = {
@@ -405,16 +282,12 @@ class InfermedicaClient:
             response.raise_for_status()
             data = response.json()
 
-            # Return the suggestions
             if isinstance(data, list):
                 return data
             else:
-                return data.get("key", [])
-
+                return data.get("suggestions", [])
         except requests.exceptions.RequestException as e:
-            print(f"✗ Red flags check failed: {e}")
-            if hasattr(e, "response") and e.response is not None:
-                print(f"Response: {e.response.text}")
+            print(f"✗ Red flags failed: {e}")
             return []
 
     def diagnosis(
@@ -425,24 +298,13 @@ class InfermedicaClient:
         interview_id: Optional[str] = None,
         extras: Optional[Dict] = None,
     ) -> DiagnosisResult:
-        """
-        Get next question in the diagnostic interview
-
-        This is the core of the iterative interview loop. Call repeatedly until should_stop=True.
-
-        Args:
-            evidence: List of symptoms/conditions with responses
-            age: Patient age
-            sex: "male" or "female"
-            interview_id: Optional interview tracking ID (recommended)
-            extras: Optional additional context
-        """
+        """Get next question in diagnostic interview"""
         url = f"{self.base_url}/diagnosis"
 
         payload = {"sex": sex, "age": {"value": age}, "evidence": evidence}
 
         if interview_id:
-            payload["interview_Id"] = interview_id
+            payload["interview_id"] = interview_id
 
         if extras:
             payload["extras"] = extras
@@ -452,12 +314,10 @@ class InfermedicaClient:
             response.raise_for_status()
             data = response.json()
 
-            # Parse the response
             should_stop = data.get("should_stop", False)
             conditions = data.get("conditions", [])
             extras_response = data.get("extras", {})
 
-            # Parse question if present
             question = None
             if not should_stop and "question" in data:
                 q = data["question"]
@@ -474,71 +334,37 @@ class InfermedicaClient:
                 conditions=conditions,
                 extras=extras_response,
             )
-
         except requests.exceptions.RequestException as e:
-            print(f"✗ Diagnosis call failed: {e}")
-            if hasattr(e, "response") and e.response is not None:
-                print(f"Response: {e.response.text}")
-
-            # Return safe default - stop interview
+            print(f"✗ Diagnosis failed: {e}")
             return DiagnosisResult(
                 question=None, should_stop=True, conditions=[], extras={}
             )
 
 
 def test_infermedica():
-    """Test Infermedica integration"""
+    """Test the client"""
+    print("Testing Infermedica Client")
     print("=" * 60)
-    print("Testing Infermedica Integration")
-    print("=" * 60)
 
-    try:
-        client = InfermedicaClient()
+    client = InfermedicaClient()
 
-        # Test 1: Parse symptoms from text
-        print("\n1️⃣ Testing symptom parsing...")
-        print("Input: 'I have a cold and fever'")
+    # Parse
+    print("\n1. Parse symptoms")
+    symptoms = client.parse_symptoms("chest pain", 45, "male")
+    print(f"✓ Parsed: {[s.common_name for s in symptoms]}")
 
-        symptoms = client.parse_symptoms(
-            text="I have a cold and fever", age=30, sex="male"
-        )
+    # Triage
+    print("\n2. Run triage")
+    triage = client.run_triage(symptoms, 45, "male")
+    print(f"✓ Urgency: {triage.triage_level.value}")
 
-        print(f"\n✓ Parsed {len(symptoms)} symptoms:")
-        for symptom in symptoms:
-            print(f"  • {symptom.common_name} ({symptom.id})")
+    # Specialist
+    print("\n3. Recommend specialist")
+    specialist = client.recommend_specialist(symptoms, 45, "male")
+    print(f"✓ Specialist: {specialist.specialist_name}")
 
-        # Test 2: Run triage
-        print("\n2️⃣ Testing triage assessment...")
-
-        triage = client.run_triage(symptoms=symptoms, age=30, sex="male")
-
-        print(f"\n✓ Triage Result:")
-        print(f"  Urgency: {triage.triage_level.value}")
-        print(f"  Recommended: {triage.recommended_specialist_name}")
-        print(f"  Channel: {triage.recommended_channel}")
-
-        if triage.serious_observations:
-            print(f"  Serious: {len(triage.serious_observations)} concerning findings")
-
-        # Test 3: Suggest symptoms (autocomplete)
-        print("\n3️⃣ Testing symptom suggestions...")
-        print("Input: 'head'")
-
-        suggestions = client.suggest_symptoms(
-            text="head", age=30, sex="male", max_results=5
-        )
-
-        print(f"\n✓ Suggested {len(suggestions)} symptoms:")
-        for suggestion in suggestions:
-            print(f"  • {suggestion.common_name}")
-
-        print("\n" + "=" * 60)
-        print("✓ All tests passed!")
-        print("=" * 60)
-
-    except Exception as e:
-        print(f"\n✗ Test failed: {e}")
-        raise
+    print("\n" + "=" * 60)
+    print("✓ All tests passed!")
 
 
 if __name__ == "__main__":

@@ -254,7 +254,7 @@ def render_stage_1_initial_symptoms():
 def render_stage_2_risk_factors():
     """Stage 2: Collect risk factors"""
     st.markdown(
-        '<div class="stage-header">Step 2: Demographic Risk Factors</div>',
+        '<div class="stage-header">Step 2: Health Background</div>',
         unsafe_allow_html=True,
     )
 
@@ -275,12 +275,8 @@ def render_stage_2_risk_factors():
             st.rerun()
         return
 
-    st.markdown(
-        """
-**How does each of these statements relate to you?**  
-<small>Select one answer for each statement</small>
-""",
-        unsafe_allow_html=True,
+    st.write(
+        f"**Please answer these {len(risk_factors)} questions about your health background:**"
     )
 
     # Create form for all risk factors
@@ -290,7 +286,7 @@ def render_stage_2_risk_factors():
         for i, rf in enumerate(risk_factors):
             st.markdown(f'<div class="question-card">', unsafe_allow_html=True)
             response = st.radio(
-                f"**{i+1}. {rf.get('common_name')}**",
+                f"**{i+1}. Do you have {rf.get('name')}?**",
                 ["Yes", "No", "Unknown"],
                 index=1,  # Default to "No"
                 key=f"rf_{rf.get('id')}",
@@ -337,12 +333,8 @@ def render_stage_3_related_symptoms():
             st.rerun()
         return
 
-    st.markdown(
-        """
-**How does each of these statements relate to you?**  
-<small>Select one answer for each statement</small>
-""",
-        unsafe_allow_html=True,
+    st.write(
+        f"**Based on your symptoms, please answer these {len(related)} related questions:**"
     )
 
     # Create form for all related symptoms
@@ -352,7 +344,7 @@ def render_stage_3_related_symptoms():
         for i, sym in enumerate(related):
             st.markdown(f'<div class="question-card">', unsafe_allow_html=True)
             response = st.radio(
-                f"**{i+1}. {sym.get('common_name')}**",
+                f"**{i+1}. Do you have {sym.get('name')}?**",
                 ["Yes", "No", "Unknown"],
                 index=1,  # Default to "No"
                 key=f"rs_{sym.get('id')}",
@@ -410,7 +402,7 @@ def render_stage_4_red_flags():
         for i, rf in enumerate(red_flags):
             st.markdown(f'<div class="question-card">', unsafe_allow_html=True)
             response = st.radio(
-                f"**⚠️ {i+1}. {rf.get('common_name')}**",
+                f"**⚠️ {i+1}. {rf.get('name')}?**",
                 ["Yes", "No", "Unknown"],
                 index=1,  # Default to "No"
                 key=f"redf_{rf.get('id')}",
@@ -492,9 +484,9 @@ def render_stage_5_interview_loop():
             manager.answer_question(item.get("id"), choice_map[response])
             st.session_state.current_question = None
             st.rerun()
+
     elif question.question_type == "group_single":
         # Multiple choice - select one option
-        # Create radio buttons for each item
         options = [item.get("name") for item in question.items]
         option_ids = [item.get("id") for item in question.items]
 
@@ -519,6 +511,7 @@ def render_stage_5_interview_loop():
 
             st.session_state.current_question = None
             st.rerun()
+
     elif question.question_type == "group_multiple":
         # Multiple selection - select one or more options
         st.markdown("**Select all that apply:**")
@@ -543,8 +536,9 @@ def render_stage_5_interview_loop():
 
             st.session_state.current_question = None
             st.rerun()
+
     else:
-        # Group question - show first item for now (can be enhanced)
+        # Fallback for unknown question types
         item = question.items[0] if question.items else {}
         response = st.radio(
             f"{item.get('name', 'Symptom')}",
@@ -560,6 +554,81 @@ def render_stage_5_interview_loop():
             st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_appointment_results(results):
+    """Render appointment recommendations"""
+    st.markdown("---")
+    st.markdown(
+        '<div class="stage-header">🗓️ Recommended Appointments</div>',
+        unsafe_allow_html=True,
+    )
+
+    triage = results["triage"]
+    specialist = results["specialist"]
+    appointments = results["appointments"]
+
+    # Show triage info
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Urgency Level", triage.triage_level.value.replace("_", " ").title())
+    with col2:
+        st.metric("Recommended Specialist", specialist.specialist_name)
+    with col3:
+        st.metric("Channel", triage.recommended_channel.title())
+
+    # Show top condition if available
+    if results.get("top_condition"):
+        st.info(f"💡 **Most likely condition:** {results['top_condition']}")
+
+    st.markdown("---")
+
+    # Show appointments
+    if not appointments:
+        st.warning("No appointments found matching your criteria")
+        return
+
+    st.write(f"**Top {len(appointments)} Appointment Options:**")
+
+    for i, appt in enumerate(appointments, 1):
+        with st.expander(
+            f"#{i} - {appt.provider_name} ({appt.specialty}) - Score: {appt.total_score:.0%}",
+            expanded=(i == 1),  # Expand first result
+        ):
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.markdown(f"**📍 {appt.location}**")
+                st.markdown(
+                    f"**📅 {appt.appointment_datetime.strftime('%A, %B %d, %Y at %I:%M %p')}**"
+                )
+                st.markdown(f"**👨‍⚕️ {appt.provider_name}** - {appt.specialty}")
+
+                # Show reasoning
+                st.markdown("**Why this appointment:**")
+                for reason in appt.reasoning:
+                    st.markdown(f"- {reason}")
+
+            with col2:
+                st.metric("Match Score", f"{appt.total_score:.0%}")
+                st.metric("Urgency Match", f"{appt.urgency_match_score:.0%}")
+                st.metric("Specialty Match", f"{appt.specialist_match_score:.0%}")
+                st.metric("Availability", f"{appt.availability_score:.0%}")
+
+    # Alternative options
+    with st.expander("🏥 Alternative Care Options"):
+        st.markdown(
+            """
+        **Emergency Room:** $1,500-$3,000  
+        Available 24/7 for life-threatening emergencies
+        
+        **Urgent Care:** $150-$300  
+        Walk-in available, shorter wait times
+        
+        **Telemedicine:** $40-$90  
+        Virtual consultation within 2-4 hours
+        """
+        )
 
 
 def render_stage_6_results():
@@ -594,11 +663,95 @@ def render_stage_6_results():
 
     # Find appointments button
     st.markdown("---")
-    if st.button(
-        "🔍 Find Optimal Appointments", type="primary", use_container_width=True
-    ):
-        st.info("Appointment matching coming in Phase 4!")
-        # This will integrate with the appointment optimizer
+
+    if not st.session_state.appointment_results:
+        if st.button(
+            "🔍 Find Optimal Appointments", type="primary", use_container_width=True
+        ):
+            with st.spinner("Finding optimal appointments..."):
+                try:
+                    manager = st.session_state.manager
+
+                    # Get triage and specialist results (two separate endpoints)
+                    results_dict = manager.get_triage_results()
+
+                    if results_dict:
+                        triage = results_dict["triage"]  # TriageResult object
+                        specialist = results_dict[
+                            "specialist"
+                        ]  # SpecialistRecommendation object
+
+                        # Get top condition for display
+                        top_condition = None
+                        if results.get("conditions"):
+                            top_condition = results["conditions"][0].get("common_name")
+
+                        # Generate appointment recommendations
+                        from appointment_simulator import (
+                            AppointmentSimulator,
+                            SpecialtyType,
+                        )
+                        from appointment_matcher import AppointmentMatcher
+
+                        simulator = AppointmentSimulator()
+                        matcher = AppointmentMatcher()
+
+                        # Map specialist name to SpecialtyType enum
+                        specialty_map = {
+                            "general practitioner": SpecialtyType.PRIMARY_CARE,
+                            "primary care": SpecialtyType.PRIMARY_CARE,
+                            "cardiologist": SpecialtyType.CARDIOLOGY,
+                            "dermatologist": SpecialtyType.DERMATOLOGY,
+                            "orthopedist": SpecialtyType.ORTHOPEDICS,
+                            "neurologist": SpecialtyType.NEUROLOGY,
+                            "psychiatrist": SpecialtyType.PSYCHIATRY,
+                            "pediatrician": SpecialtyType.PEDIATRICS,
+                        }
+
+                        specialist_lower = specialist.specialist_name.lower()
+                        specialty_type = specialty_map.get(
+                            specialist_lower, SpecialtyType.PRIMARY_CARE
+                        )
+
+                        # Generate slots for recommended specialist
+                        slots = simulator.generate_slots(
+                            specialty=specialty_type, days_ahead=14
+                        )
+
+                        # Score appointments (matcher now takes separate params)
+                        scored = matcher.match_appointments(
+                            triage_level=triage.triage_level.value,
+                            specialist_name=specialist.specialist_name,
+                            available_slots=slots,
+                            max_results=5,
+                        )
+
+                        # Store results
+                        st.session_state.appointment_results = {
+                            "triage": triage,
+                            "specialist": specialist,
+                            "top_condition": top_condition,
+                            "appointments": scored,
+                        }
+
+                        st.rerun()
+                    else:
+                        st.error("Could not get triage results")
+
+                except Exception as e:
+                    st.error(f"Error finding appointments: {e}")
+                    import traceback
+
+                    st.code(traceback.format_exc())
+                except Exception as e:
+                    st.error(f"Error finding appointments: {e}")
+                    import traceback
+
+                    st.code(traceback.format_exc())
+
+    # Show appointment results if available
+    if st.session_state.appointment_results:
+        render_appointment_results(st.session_state.appointment_results)
 
 
 def main():
