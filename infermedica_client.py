@@ -38,11 +38,17 @@ class TriageResult:
     """Result from triage endpoint"""
 
     triage_level: TriageLevel
-    recommended_specialist_id: str
-    recommended_specialist_name: str
-    recommended_channel: str
     serious_observations: List[Dict]
     root_cause: str
+
+
+@dataclass
+class SpecialistRecommendation:
+    """Result from /recommend_specialist endpont"""
+
+    specialist_id: str
+    specialist_name: str
+    specialist_category: str
 
 
 @dataclass
@@ -229,13 +235,6 @@ class InfermedicaClient:
 
             return TriageResult(
                 triage_level=TriageLevel(data["triage_level"]),
-                recommended_specialist_id=data.get("recommended_specialist", {}).get(
-                    "id", "sp_1"
-                ),
-                recommended_specialist_name=data.get("recommended_specialist", {}).get(
-                    "name", "General Practitioner"
-                ),
-                recommended_channel=data.get("recommended_channel", "personal_visit"),
                 serious_observations=data.get("serious", []),
                 root_cause=data.get("root_cause", ""),
             )
@@ -246,30 +245,40 @@ class InfermedicaClient:
                 print(f"Response: {e.response.text}")
             raise
 
-    def get_specialist_info(self, specialist_id: str) -> Dict:
-        """
-        Get information about a specialist
+    def recommend_specialist(
+        self, symptoms: List[ParsedSymptom], age: int, sex: str
+    ) -> SpecialistRecommendation:
+        """Get specialist recommendation from /recommend_specialist endpoint"""
+        url = f"{self.base_url}/recommend_specialist"
 
-        Args:
-            specialist_id: Specialist ID (e.g., "sp_2")
+        evidence = [
+            {"id": s.id, "choice_id": s.choice_id, "source": "initial"}
+            for s in symptoms
+        ]
 
-        Returns:
-            Specialist information
-        """
-        # Map common specialist IDs to names
-        specialist_map = {
-            "sp_1": {"name": "General Practitioner", "category": "Primary Care"},
-            "sp_2": {"name": "Cardiologist", "category": "Cardiology"},
-            "sp_3": {"name": "Dermatologist", "category": "Dermatology"},
-            "sp_5": {"name": "Orthopedist", "category": "Orthopedics"},
-            "sp_17": {"name": "Neurologist", "category": "Neurology"},
-            "sp_15": {"name": "Psychiatrist", "category": "Psychiatry"},
-            "sp_11": {"name": "Pediatrician", "category": "Pediatrics"},
-        }
+        payload = {"sex": sex, "age": {"value": age}, "evidence": evidence}
 
-        return specialist_map.get(
-            specialist_id, {"name": "Specialist", "category": "General"}
-        )
+        try:
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            specialist = data.get("recommended_specialist", {})
+
+            return SpecialistRecommendation(
+                specialist_id=specialist.get("id", "sp_1"),
+                specialist_name=specialist.get("name", "General Practitioner"),
+                specialist_category=specialist.get("category", "Primary Care"),
+            )
+
+        except requests.exceptions.RequestException as e:
+            print(f"✗ Specialist recommendation failed: {e}")
+            # Return safe default
+            return SpecialistRecommendation(
+                specialist_id="sp_1",
+                specialist_name="General Practitioner",
+                specialist_category="Primary Care",
+            )
 
     def suggest_risk_factors(
         self, age: int, sex: str, interview_id: Optional[str] = None
